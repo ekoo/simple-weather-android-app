@@ -2,8 +2,10 @@ package com.ekoo.weather
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.widget.Toast
@@ -134,11 +136,21 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("MissingPermission")
     private fun fetchData() {
+        if (!isGpsEnable()) {
+            showToast("Please enable GPS")
+            return
+        }
+
         val locationTask = LocationServices
             .getFusedLocationProviderClient(this)
             .getCurrentLocation(PRIORITY_HIGH_ACCURACY, null)
 
         viewModel.fetchData(locationTask, this::handleException)
+    }
+
+    private fun isGpsEnable(): Boolean {
+        return (getSystemService(Context.LOCATION_SERVICE) as LocationManager)
+            .isProviderEnabled(LocationManager.GPS_PROVIDER)
     }
 
     private fun handleException(exception: Exception) {
