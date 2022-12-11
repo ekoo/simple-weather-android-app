@@ -1,54 +1,90 @@
 package com.ekoo.weather
 
-import androidx.lifecycle.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Path
-import retrofit2.http.Query
+import android.util.Log
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.android.gms.tasks.Task
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.gson.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.tasks.await
 
-interface Services{
-
-    @GET("locations/v1/cities/geoposition/search.json?")
-    suspend fun getLocationKeyAsync(@Query(value = "q", encoded = true) latitudeLongitude: String, @Query("apikey") apiKey: String) : Location
-
-    @GET("forecasts/v1/hourly/1hour/{locationKey}")
-    suspend fun getOneHourForecastAsync(@Path(value = "locationKey", encoded = true) locationKey: String, @Query("apikey") apiKey: String): List<OneHourForecast>
-
-    @GET("forecasts/v1/daily/1day/{locationKey}")
-    suspend fun getOneDayForecastAsync(@Path(value = "locationKey", encoded = true) locationKey: String, @Query("apikey") apiKey: String): OneDayForecast
-
-}
-
-class MainViewModel : ViewModel(){
-
-    //singleton retrofit instance
-    companion object{
-        private const val URL = "http://api.accuweather.com/"
-        private const val API_KEY = BuildConfig.API_KEY
-
-        fun getInstance(): Services {
-            return Retrofit.Builder()
-                .addConverterFactory(GsonConverterFactory.create())
-                .baseUrl(URL)
-                .build()
-                .create(Services::class.java)
-        }
-    }
-    private val service = getInstance()
+class MainViewModel : ViewModel() {
 
     val locationName = MutableLiveData<String>()
-    val oneHourForecast = MutableLiveData<List<OneHourForecast>>()
-    val oneDayForecast = MutableLiveData<OneDayForecast>()
+    val oneHourForecast = MutableLiveData<OneHourForecast>()
+    val oneDayForecast = MutableLiveData<OneDayForecast.DailyForecast>()
+    val status = MutableLiveData<Status>()
+    var fetchJob: Job? = null
 
-    fun fetchData(latitudeLongitude: String) = viewModelScope.launch(Dispatchers.IO){
-        val location = service.getLocationKeyAsync(latitudeLongitude, API_KEY)
-        val locationKey = location.key
+    private val client = HttpClient(CIO) {
+        defaultRequest {
+            url {
+                protocol = URLProtocol.HTTPS
+                host = "api.accuweather.com"
+                parameters.append("apikey", BuildConfig.API_KEY)
+            }
+        }
 
-        locationName.postValue("${location.localizedName}, ${location.administrativeArea.localizedName}")
-        oneHourForecast.postValue(service.getOneHourForecastAsync(locationKey, API_KEY))
-        oneDayForecast.postValue(service.getOneDayForecastAsync(locationKey, API_KEY))
+        install(ContentNegotiation) {
+            gson {
+                setPrettyPrinting()
+                setLenient()
+            }
+        }
+
+        install(Logging) {
+            logger = object : Logger {
+                override fun log(message: String) {
+                    Log.v("Logger Ktor =>", message)
+                }
+            }
+            level = LogLevel.ALL
+        }
     }
+
+    fun fetchData(task: Task<android.location.Location>, exception: (Exception) -> Unit) {
+        if (fetchJob?.isActive == true) fetchJob?.cancel()
+        fetchJob = viewModelScope.launch(Dispatchers.IO) {
+            status.postValue(Status.LOADING)
+            try {
+                val location = task.await()
+                val queryLocation = "${location.latitude},${location.longitude}"
+                val geoPosition = getLocation(queryLocation).body<Location>()
+
+                val locationKey = geoPosition.key
+                val oneHour = async { getOneHourForecast(locationKey) }
+                val oneDay = async { getOneDayForecast(locationKey) }
+
+                locationName.postValue(geoPosition.localizedName)
+                oneHourForecast.postValue(oneHour.await().first())
+                oneDayForecast.postValue(oneDay.await().dailyForecasts.first())
+                status.postValue(Status.SUCCESS)
+            } catch (e: Exception) {
+                status.postValue(Status.ERROR)
+                withContext(Dispatchers.Main) {
+                    exception(e)
+                }
+            }
+        }
+    }
+
+    private suspend fun getLocation(geoPosition: String) = client
+        .get("locations/v1/cities/geoposition/search.json") {
+            parameter("q", geoPosition)
+        }
+
+    private suspend fun getOneHourForecast(locationKey: String) = client
+        .get("forecasts/v1/hourly/1hour/$locationKey").body<List<OneHourForecast>>()
+
+    private suspend fun getOneDayForecast(locationKey: String) = client
+        .get("forecasts/v1/daily/1day/$locationKey").body<OneDayForecast>()
 }

@@ -6,15 +6,8 @@ data class Location(
     @SerializedName("Key")
     val key: String,
     @SerializedName("LocalizedName")
-    val localizedName: String,
-    @SerializedName("AdministrativeArea")
-    val administrativeArea: AdministrativeArea
-) {
-    data class AdministrativeArea(
-        @SerializedName("LocalizedName")
-        val localizedName: String
-    )
-}
+    val localizedName: String
+)
 
 data class OneHourForecast(
     @SerializedName("DateTime")
@@ -63,4 +56,10 @@ data class OneDayForecast(
         @SerializedName("Text")
         val text: String
     )
+}
+
+enum class Status {
+    SUCCESS,
+    ERROR,
+    LOADING
 }
