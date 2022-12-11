@@ -27,7 +27,7 @@ class MainViewModel : ViewModel(){
     //singleton retrofit instance
     companion object{
         private const val URL = "http://api.accuweather.com/"
-        private const val API_KEY = "replace with your api key"
+        private const val API_KEY = BuildConfig.API_KEY
 
         fun getInstance(): Services {
             return Retrofit.Builder()
