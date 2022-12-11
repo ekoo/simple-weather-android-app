@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import com.ekoo.weather.databinding.ActivityMainBinding
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
@@ -135,7 +136,8 @@ class MainActivity : AppCompatActivity() {
     private fun fetchData() {
         val locationTask = LocationServices
             .getFusedLocationProviderClient(this)
-            .lastLocation
+            .getCurrentLocation(PRIORITY_HIGH_ACCURACY, null)
+
         viewModel.fetchData(locationTask, this::handleException)
     }
 
