@@ -12,7 +12,6 @@ import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
 import io.ktor.client.request.*
-import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.gson.*
 import kotlinx.coroutines.*
@@ -27,6 +26,8 @@ class MainViewModel : ViewModel() {
     var fetchJob: Job? = null
 
     private val client = HttpClient(CIO) {
+        expectSuccess = true
+
         defaultRequest {
             url {
                 protocol = URLProtocol.HTTPS
@@ -59,7 +60,7 @@ class MainViewModel : ViewModel() {
             try {
                 val location = task.await()
                 val queryLocation = "${location.latitude},${location.longitude}"
-                val geoPosition = getLocation(queryLocation).bodyOrThrow<Location>()
+                val geoPosition = getLocation(queryLocation).body<Location>()
 
                 val locationKey = geoPosition.key
                 val oneHour = async { getOneHourForecast(locationKey) }
@@ -84,13 +85,8 @@ class MainViewModel : ViewModel() {
         }
 
     private suspend fun getOneHourForecast(locationKey: String) = client
-        .get("forecasts/v1/hourly/1hour/$locationKey").bodyOrThrow<List<OneHourForecast>>()
+        .get("forecasts/v1/hourly/1hour/$locationKey").body<List<OneHourForecast>>()
 
     private suspend fun getOneDayForecast(locationKey: String) = client
-        .get("forecasts/v1/daily/1day/$locationKey").bodyOrThrow<OneDayForecast>()
-
-    private suspend inline fun <reified T> HttpResponse.bodyOrThrow(): T {
-        if (!status.isSuccess()) throw Exception("Error ${status.value}")
-        return body()
-    }
+        .get("forecasts/v1/daily/1day/$locationKey").body<OneDayForecast>()
 }
