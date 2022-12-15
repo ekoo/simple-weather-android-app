@@ -3,19 +3,18 @@ package com.ekoo.weather
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Bundle
-import android.preference.PreferenceManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
-import androidx.lifecycle.ViewModelProvider
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.ekoo.weather.databinding.ActivityMainBinding
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
@@ -23,7 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var viewModel: MainViewModel
+    private val viewModel: MainViewModel by viewModels()
     private lateinit var binding: ActivityMainBinding
     private val locationPermission = registerForActivityResult(RequestMultiplePermissions()) {
         if (!it.containsValue(true)) {
@@ -43,21 +42,23 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.scrollView.isVisible = false
-        val preference = PreferenceManager.getDefaultSharedPreferences(this)
-        changeTheme(preference.getInt("theme", 0))
+        viewModel.preference.observe(this) {
+            val theme = it[(intPreferencesKey("theme"))] ?: 0
+            changeTheme(theme)
+        }
 
         binding.toolbar.apply {
             inflateMenu(R.menu.main_menu)
             setNavigationOnClickListener {
-                showChangeThemeDialog(preference)
+                viewModel.getCurrentTheme { currentTheme ->
+                    showChangeThemeDialog(currentTheme)
+                }
             }
             setOnMenuItemClickListener {
                 fetchData()
                 true
             }
         }
-
-        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         viewModel.locationName.observe(this@MainActivity) {
             binding.locationTv.text = it
         }
@@ -84,17 +85,16 @@ class MainActivity : AppCompatActivity() {
         fetchData()
     }
 
-    private fun showChangeThemeDialog(preference: SharedPreferences) {
-        var checkedItem = preference.getInt("theme", 0)
+    private fun showChangeThemeDialog(currentTheme: Int) {
+        var newTheme: Int? = null
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Select Theme")
-            .setSingleChoiceItems(arrayOf("System", "Dark", "Light"), checkedItem) { _, which ->
-                checkedItem = which
+            .setSingleChoiceItems(arrayOf("System", "Dark", "Light"), currentTheme) { _, which ->
+                newTheme = which
             }
             .setPositiveButton("Save") { _, _ ->
-                preference.edit().putInt("theme", checkedItem).apply()
-                changeTheme(checkedItem)
+                viewModel.setCurrentTheme(newTheme ?: return@setPositiveButton)
             }
             .setNegativeButton("Cancel", null)
             .show()

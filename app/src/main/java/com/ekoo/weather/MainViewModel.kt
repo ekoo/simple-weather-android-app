@@ -1,8 +1,16 @@
 package com.ekoo.weather
 
+import android.app.Application
+import android.content.Context
 import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.tasks.Task
 import io.ktor.client.*
@@ -15,15 +23,18 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.gson.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.tasks.await
 
-class MainViewModel : ViewModel() {
+class MainViewModel(app: Application) : AndroidViewModel(app) {
 
+    private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
     val locationName = MutableLiveData<String>()
     val oneHourForecast = MutableLiveData<OneHourForecast>()
     val oneDayForecast = MutableLiveData<OneDayForecast.DailyForecast>()
     val status = MutableLiveData<Status>()
     var fetchJob: Job? = null
+
 
     private val client = HttpClient(CIO) {
         expectSuccess = true
@@ -75,6 +86,31 @@ class MainViewModel : ViewModel() {
                 withContext(Dispatchers.Main) {
                     exception(e)
                 }
+            }
+        }
+    }
+
+    val preference = getApplication<Application>()
+        .dataStore
+        .data
+        .asLiveData(viewModelScope.coroutineContext)
+
+    fun getCurrentTheme(result: (Int) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val theme = getApplication<Application>()
+                .dataStore
+                .data
+                .firstOrNull()?.get(intPreferencesKey("theme")) ?: 0
+            withContext(Dispatchers.Main) {
+                result(theme)
+            }
+        }
+    }
+
+    fun setCurrentTheme(theme: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            getApplication<Application>().dataStore.edit {
+                it[intPreferencesKey("theme")] = theme
             }
         }
     }
